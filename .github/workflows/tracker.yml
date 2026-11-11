@@ -1,0 +1,47 @@
+name: GitHub Projects Automation 
+
+on:
+  pull_request:
+    types: [closed]
+    
+jobs:
+  move-issue-to-done:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository 
+      uses: actions/checkout@v2
+      
+    - name: Check if PR is merged
+      id: check-merged 
+      run: |
+        if [ "${{ github.event.pull_request.merged }}" == "true"]; then
+          echo "PR was merged. Proceeding..."
+          echo "is_merged=true" >> $GITHUB_OUTPUT
+        else
+          echo "PR was closed without being merging. Exiting."
+          echo "is_merged=false" >> $GITHUB_OUTPUT
+          fi
+        
+    - name: Move associated issue to Done
+      if: steps.check-merged.outputs.is_merged == 'true'
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        PR_BODY: ${{ github.event.pull_request.body }}
+      run: |
+        echo "Parsing linkedissues from PR body..."
+        ISSUE_NUMBER=$(echo "$PR_BODY" | grep -oE '(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)[[:space:]]*#[0-9]+' | grep -oE '[0-9]+' | head -n 1)
+        if [ -z "$ISSUE_NUMBER" ]; then 
+          echo "No linked issue in PR description."
+          exit 0
+        fi
+        echo "Found linked issue: #$ISSUE_NUMBER"
+        curl -X POST \
+        -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+        -H "Accept: application/vnd.github.v3+json" \
+        -d "{
+          \"column_id\": \"PROJECT_COLUMN_ID\",
+          \"content_type\": \"Issue\",
+          \"content_id\": $ISSUE_ID 
+        }" \
+        https://api.github.com/projects/columns/PROJECT_COLUMN_ID/cards
